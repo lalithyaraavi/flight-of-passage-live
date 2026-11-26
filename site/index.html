@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flight of Passage, Live</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A live data pipeline that watches the Flight of Passage line every 10 minutes. By Lalithya Raavi.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a night-glow title band with a live readout, then one reading column of "stations" along the queue. */
+:root {
+  --bg: #eef5f3; --surface: #ffffff; --ink: #0f2a2c; --muted: #4f6b6b; --line: #d5e4e1;
+  --glow: #0a8f8a; --glow-soft: #d8f1ee; --violet: #6a3fd1; --violet-soft: #ece5ff;
+  --hot: #c24a2b; --hot-soft: #fbe5dc; --ok: #1c7d4f; --ok-soft: #dcf2e6; --warn: #8f6200; --warn-soft: #fbf0d4; --code-bg: #e5efed;
+  --night-1: #03141a; --night-2: #0b2e3a; --night-ink: #e8fbf8; --night-muted: #9cc9c3; --night-glow: #45f0dc; --night-violet: #b394ff;
+  --f-display: "Syne", "Avenir Next", "Segoe UI", sans-serif;
+  --f-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #04161c; --surface: #0a242c; --ink: #e6f8f5; --muted: #93b8b3; --line: #17404a;
+    --glow: #45f0dc; --glow-soft: #0d3b40; --violet: #b394ff; --violet-soft: #251d48;
+    --hot: #ff8a6b; --hot-soft: #3d1f1a; --ok: #6be3a6; --ok-soft: #12382b; --warn: #f2c35b; --warn-soft: #362c14; --code-bg: #071d24;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #04161c; --surface: #0a242c; --ink: #e6f8f5; --muted: #93b8b3; --line: #17404a;
+  --glow: #45f0dc; --glow-soft: #0d3b40; --violet: #b394ff; --violet-soft: #251d48;
+  --hot: #ff8a6b; --hot-soft: #3d1f1a; --ok: #6be3a6; --ok-soft: #12382b; --warn: #f2c35b; --warn-soft: #362c14; --code-bg: #071d24;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.6; }
+a { color: var(--glow); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; border-radius: 4px; }
+p { margin: 0; }
+code { font-family: var(--f-mono); font-size: 0.85em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+
+.night { position: relative; overflow: hidden; color: var(--night-ink);
+  background: radial-gradient(90% 120% at 85% 10%, var(--night-2) 0%, var(--night-1) 65%);
+  padding-top: env(safe-area-inset-top, 0px); }
+.night canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.night-inner { position: relative; max-width: 960px; margin: 0 auto; padding-block: 56px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: 1.35fr 1fr; gap: 32px; align-items: end; }
+.eyebrow { font-family: var(--f-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--night-glow); }
+.hero-copy { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: clamp(2rem, 4.6vw, 3rem); line-height: 1.02; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+h1 span { color: var(--night-glow); text-shadow: 0 0 24px rgba(69, 240, 220, 0.45); }
+.night .lede { font-size: 1.08rem; color: var(--night-ink); max-width: 56ch; }
+.night .lede b { color: var(--night-violet); font-weight: 600; }
+.readout { border: 1px solid rgba(69, 240, 220, 0.35); border-radius: 18px; padding: 18px 20px; background: rgba(3, 20, 26, 0.55);
+  backdrop-filter: blur(4px); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.readout .lbl { font-family: var(--f-mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--night-muted); }
+.readout .big { font-family: var(--f-display); font-weight: 800; font-size: clamp(3rem, 9vw, 4.6rem); line-height: 1; color: var(--night-glow); text-shadow: 0 0 30px rgba(69, 240, 220, 0.5); font-variant-numeric: tabular-nums; }
+.readout .big small { font-size: 0.32em; font-weight: 700; color: var(--night-ink); text-shadow: none; margin-left: 6px; }
+.readout .sub { font-size: 0.86rem; color: var(--night-muted); }
+.readout svg { width: 100%; height: 56px; display: block; }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--night-glow); box-shadow: 0 0 10px var(--night-glow); margin-right: 6px; vertical-align: 1px; }
+.live-dot.off { background: var(--night-muted); box-shadow: none; }
+
+main { max-width: 960px; margin: 0 auto; padding-block: 48px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 60px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.station { font-family: var(--f-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--violet); }
+h2 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.5rem, 3.4vw, 2rem); line-height: 1.12; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.prose { max-width: 66ch; display: flex; flex-direction: column; gap: 10px; }
+.callout { font-size: 1.05rem; max-width: 64ch; padding: 12px 16px; border-radius: 12px; background: var(--glow-soft); }
+.callout b { font-weight: 700; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; min-width: 0; }
+.panel-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.panel-title { font-weight: 700; font-size: 0.95rem; }
+.panel-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.real { font-family: var(--f-mono); font-size: 0.66rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ok); background: var(--ok-soft); padding: 2px 8px; border-radius: 4px; }
+.caption { font-size: 0.86rem; color: var(--muted); }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 0.92rem; border: 1px dashed var(--line); border-radius: 12px; }
+
+.chart svg { width: 100%; height: auto; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.82rem; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+
+.heat { overflow-x: auto; }
+.heat table { border-collapse: separate; border-spacing: 3px; font-size: 0.72rem; }
+.heat th { font-family: var(--f-mono); font-weight: 500; color: var(--muted); padding: 0 4px; white-space: nowrap; }
+.heat td { width: 26px; height: 24px; border-radius: 5px; text-align: center; font-family: var(--f-mono); font-size: 0.66rem; font-variant-numeric: tabular-nums; }
+.heat td.none { border: 1px dashed var(--line); }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+table.t { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+table.t th, table.t td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t th { font-family: var(--f-mono); font-size: 0.68rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--code-bg); }
+table.t tr:last-child td { border-bottom: 0; }
+table.t td.num, table.t th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+table.t td.wrap { white-space: normal; min-width: 220px; }
+
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.land { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.land h3 { margin: 0; font-size: 0.78rem; font-family: var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.ride { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; font-size: 0.88rem; }
+.ride span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.pill { font-family: var(--f-mono); font-size: 0.74rem; padding: 1px 9px; border-radius: 999px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pill.w { background: var(--glow-soft); color: var(--glow); font-weight: 600; }
+.pill.hot { background: var(--hot-soft); color: var(--hot); font-weight: 600; }
+.pill.c { background: var(--code-bg); color: var(--muted); }
+.pill.n { background: var(--violet-soft); color: var(--violet); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--hot-soft); color: var(--hot); }
+
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tile { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile b { font-family: var(--f-display); font-size: 1.7rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile span { font-size: 0.8rem; color: var(--muted); }
+
+.flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.step { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; min-width: 0; position: relative; }
+.step .tier { font-family: var(--f-mono); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--violet); }
+.step b { font-size: 0.95rem; }
+.step p { font-size: 0.84rem; color: var(--muted); }
+.step code { font-size: 0.74rem; overflow-wrap: anywhere; }
+.asks { display: flex; flex-direction: column; gap: 12px; }
+.asks p { max-width: 66ch; }
+footer { border-top: 1px solid var(--line); }
+.foot { max-width: 960px; margin: 0 auto; padding-block: 22px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); font-size: 0.84rem; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+
+@media (max-width: 760px) {
+  .night-inner { grid-template-columns: 1fr; }
+  .tiles { grid-template-columns: repeat(2, 1fr); }
+  .flow { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 420px) { .flow { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="night">
+  <canvas id="glow" aria-hidden="true"></canvas>
+  <div class="night-inner">
+    <div class="hero-copy">
+      <div class="eyebrow">A live data pipeline · for the Disney+ Product Performance team · Lalithya Raavi</div>
+      <h1>I once waited three hours for <span>Flight of Passage.</span></h1>
+      <p class="lede">So I mapped the wait times and <b>cut my next wait in half</b>. This is that project rebuilt as a real pipeline. Every 10 minutes it reads the posted wait for every ride in Disney's Animal Kingdom, cleans it, checks itself, and publishes the tables this page reads.</p>
+    </div>
+    <div class="readout" aria-live="polite">
+      <span class="lbl"><span class="live-dot" id="live-dot"></span>Flight of Passage · posted wait</span>
+      <span class="big" id="now-wait">–</span>
+      <span class="sub" id="now-sub">Loading the latest reading…</span>
+      <svg id="spark" viewBox="0 0 300 56" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section aria-labelledby="s1">
+    <div class="station">Station 1 · today</div>
+    <h2 id="s1">Today's line, reading by reading</h2>
+    <div class="callout" id="today-call">Waiting for today's readings.</div>
+    <div class="panel">
+      <div class="panel-bar"><span class="panel-title" id="today-title">Posted wait, park time</span><span class="real">Real data</span></div>
+      <div class="panel-body">
+        <div class="chart" id="today-chart"></div>
+        <div class="legend" id="today-legend"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s2">
+    <div class="station">Station 2 · when to ride</div>
+    <h2 id="s2">The map that fills itself in</h2>
+    <div class="prose"><p>Every reading lands in a weekday and half-hour slot. Dashed squares are times the pipeline hasn't seen yet. Each new day fills in more of the map, the same way my first spreadsheet did, except nobody has to type it.</p></div>
+    <div class="panel">
+      <div class="panel-bar"><span class="panel-title">Average Flight of Passage wait (minutes)</span><span class="caption" id="heat-count"></span></div>
+      <div class="panel-body">
+        <div class="heat" id="heat"></div>
+      </div>
+    </div>
+    <div class="tablewrap">
+      <table class="t">
+        <thead><tr><th>Park day</th><th class="num">Readings</th><th class="num">Average</th><th class="num">Peak</th><th>Best hour starts</th><th class="num">Best-hour average</th><th class="num">Shorter than peak</th></tr></thead>
+        <tbody id="days"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="s3">
+    <div class="station">Station 3 · the whole park</div>
+    <h2 id="s3">Every line in Animal Kingdom, right now</h2>
+    <div class="board" id="board"></div>
+    <p class="caption">"No posted wait" means open with nothing to queue for, like a show or a walking trail. I keep that apart from a real zero so it can't drag down an average.</p>
+  </section>
+
+  <section aria-labelledby="s4">
+    <div class="station">Station 4 · quality checks</div>
+    <h2 id="s4">The pipeline keeps an eye on itself</h2>
+    <div class="prose"><p>Live feeds are messy. The feed sometimes stops refreshing, GitHub starts scheduled runs late, fetches fail, and now and then a wait jumps in a way no real line does. Every run checks for each of these, keeps the raw snapshot regardless, and holds bad readings out of the tables above.</p></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="tablewrap">
+      <table class="t">
+        <thead><tr><th>Run (UTC)</th><th class="num">Gap</th><th class="num">New readings</th><th>Checks</th></tr></thead>
+        <tbody id="runs"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="s5">
+    <div class="station">Station 5 · why this is a Disney+ project</div>
+    <h2 id="s5">Same pipeline, different line</h2>
+    <div class="prose"><p>Product Performance measures how people move through Disney+: what they search, which rows they browse, what finally starts a play. A queue is the same problem in a park. Here's how each piece maps across.</p></div>
+    <div class="tablewrap">
+      <table class="t">
+        <thead><tr><th>In the park (this project)</th><th>On Disney+ (Product Performance)</th></tr></thead>
+        <tbody>
+          <tr><td class="wrap">Posted wait for a ride</td><td class="wrap">Time from opening the app to the first play</td></tr>
+          <tr><td class="wrap">Best hour to ride vs the peak</td><td class="wrap">Which entry points get people to a play fastest: search, a home row, Continue Watching</td></tr>
+          <tr><td class="wrap">Feed stops refreshing; I flag it instead of trusting it</td><td class="wrap">Device clocks and late events skewing playback attribution</td></tr>
+          <tr><td class="wrap">Same snapshot fetched twice, kept once</td><td class="wrap">Client retries sending the same play event twice</td></tr>
+          <tr><td class="wrap">"No posted wait" kept apart from a real zero</td><td class="wrap">A search with zero results kept apart from a search nobody clicked</td></tr>
+          <tr><td class="wrap">GitHub Actions every 10 minutes, late runs measured</td><td class="wrap">Airflow DAGs with uptime SLAs</td></tr>
+          <tr><td class="wrap">Bronze JSON, silver CSV partitions, gold tables</td><td class="wrap">Delta Lake bronze, silver and gold layers on Databricks, shared to Snowflake</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="s6">
+    <div class="station">Station 6 · how it's built</div>
+    <h2 id="s6">Four steps, every 10 minutes</h2>
+    <div class="flow">
+      <div class="step"><span class="tier">Schedule</span><b>GitHub Actions</b><p>Cron every 10 minutes. Runs are numbered and timed, so a late start shows up in station 4.</p><code>.github/workflows/collect.yml</code></div>
+      <div class="step"><span class="tier">Bronze</span><b>Raw snapshot</b><p>The feed's JSON exactly as received, plus fetch time and HTTP status. Never edited, so any fix can be replayed.</p><code>data/bronze/date/time.json</code></div>
+      <div class="step"><span class="tier">Silver</span><b>One row per reading</b><p>Deduplicated on ride and feed timestamp, typed, converted to park time, stale and jump flags added. One file per park day.</p><code>data/silver/waits/date.csv</code></div>
+      <div class="step"><span class="tier">Gold</span><b>What the page reads</b><p>Today's curves, the weekday heatmap, daily best hours, the live board and the run log, as small JSON tables.</p><code>data/gold/*.json</code></div>
+    </div>
+    <p class="caption" id="src-line">Code and every snapshot: <a id="repo-link" href="https://github.com/lalithyaraavi/flight-of-passage-live" target="_blank" rel="noopener">github.com/lalithyaraavi/flight-of-passage-live</a></p>
+  </section>
+
+  <section aria-labelledby="s7">
+    <div class="station">Station 7 · at Disney scale</div>
+    <h2 id="s7">What I'd change for hundreds of millions of plays</h2>
+    <div class="asks">
+      <p><b>Spark and Delta instead of Python and CSV.</b> The silver step becomes a Delta <code>MERGE</code> on the event key, so reruns never double-count, partitioned by date.</p>
+      <p><b>Airflow instead of cron.</b> Sensors wait for late data instead of guessing, and the quality checks become a gate that stops a bad hour from publishing.</p>
+      <p><b>The checks as a shared library.</b> Freshness, duplicates, schema drift and impossible jumps written once, so every pipeline in the Data organization checks itself the same way.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="foot">
+    <p>Wait times <a href="https://queue-times.com/" target="_blank" rel="noopener">Powered by Queue-Times.com</a>. Posted waits are the park's estimates, not measured times.</p>
+    <p>Independent project, not affiliated with or endorsed by The Walt Disney Company. Ride and park names belong to their owners.</p>
+    <p>Lalithya Raavi · Systems Design Engineering, University of Waterloo · lraavi@uwaterloo.ca · <a href="https://lalithya-website.vercel.app" target="_blank" rel="noopener">lalithya-website.vercel.app</a></p>
+  </div>
+</footer>
+
+<script id="snapshot" type="application/json">/*SNAPSHOT*/</script>
+<script>
+(function () {
+  const REPO = "lalithyaraavi/flight-of-passage-live";
+  const BASE = "https://raw.githubusercontent.com/" + REPO + "/main/data/gold/";
+  const FILES = ["latest", "today", "days", "heatmap", "dq"];
+  const FOP = "4439";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = n => Number(n).toLocaleString("en-US");
+  const toMin = hhmm => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+  const clock = mins => { const h = Math.floor(mins / 60), m = mins % 60, ap = h >= 12 ? "PM" : "AM"; return ((h + 11) % 12 + 1) + ":" + String(m).padStart(2, "0") + " " + ap; };
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const parkTime = iso => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+
+  async function load() {
+    try {
+      const got = await Promise.all(FILES.map(f => fetch(BASE + f + ".json", { cache: "no-store" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })));
+      return { live: true, ...Object.fromEntries(FILES.map((f, i) => [f, got[i]])) };
+    } catch (e) {
+      try { const s = JSON.parse($("snapshot").textContent); return { live: false, ...s }; } catch (e2) { return null; }
+    }
+  }
+
+  function renderHero(d) {
+    const latest = d.latest || { rides: [] };
+    const fop = latest.rides.find(r => String(r.ride_id) === FOP);
+    $("live-dot").classList.toggle("off", !d.live);
+    if (!fop) { $("now-wait").textContent = "–"; $("now-sub").textContent = "No reading yet. The first run is on its way."; return; }
+    if (fop.status === "open") $("now-wait").innerHTML = fop.wait + "<small>min</small>";
+    else $("now-wait").innerHTML = "Closed";
+    $("now-sub").textContent = (d.live ? "Live · " : "Saved snapshot · ") + "feed updated " + parkTime(fop.updated) + " park time";
+    const pts = ((d.today && d.today.series[FOP]) || { points: [] }).points;
+    const svg = $("spark");
+    if (pts.length > 1) {
+      const xs = pts.map(p => toMin(p[0])), ys = pts.map(p => p[1]);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), ymax = Math.max(30, ...ys);
+      const P = pts.map((p, i) => [((xs[i] - x0) / Math.max(1, x1 - x0)) * 296 + 2, 52 - (ys[i] / ymax) * 46]);
+      const line = P.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+      svg.innerHTML = '<path d="' + line + ' L ' + P[P.length - 1][0] + ' 56 L ' + P[0][0] + ' 56 Z" fill="rgba(69,240,220,0.14)"/><path d="' + line + '" fill="none" stroke="#45f0dc" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="' + P[P.length - 1][0] + '" cy="' + P[P.length - 1][1] + '" r="3.5" fill="#45f0dc"/>';
+    }
+  }
+
+  function bestHour(pts) {
+    let best = null;
+    for (let i = 0; i < pts.length; i++) {
+      const t0 = toMin(pts[i][0]); const win = pts.filter(p => toMin(p[0]) >= t0 && toMin(p[0]) - t0 <= 60).map(p => p[1]);
+      if (win.length >= 3) { const avg = win.reduce((a, b) => a + b, 0) / win.length; if (!best || avg < best.avg) best = { start: t0, avg }; }
+    }
+    return best;
+  }
+
+  function renderToday(d) {
+    const s = d.today && d.today.series;
+    const fop = s && s[FOP];
+    const host = $("today-chart");
+    if (!fop || fop.points.length < 2) {
+      host.innerHTML = '<div class="empty">Today\'s curve appears after a few readings while the park is open.</div>';
+      $("today-call").textContent = "The park is closed or the day has just started, so there isn't a curve yet.";
+      return;
+    }
+    $("today-title").textContent = "Posted wait, park time · " + new Date(d.today.park_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+    const colors = { "4439": css("--glow"), "4438": css("--violet"), "110": css("--hot") };
+    const shown = ["4439", "4438", "110"].filter(k => s[k] && s[k].points.length > 1);
+    const all = shown.flatMap(k => s[k].points);
+    const xs = all.map(p => toMin(p[0])), ys = all.map(p => p[1]);
+    const x0 = Math.floor(Math.min(...xs) / 60) * 60, x1 = Math.ceil(Math.max(...xs) / 60) * 60;
+    const ymax = Math.ceil((Math.max(30, ...ys) + 15) / 30) * 30;
+    const W = 860, H = 300, L = 44, R = 16, T = 14, B = 34;
+    const X = m => L + (m - x0) / Math.max(1, x1 - x0) * (W - L - R), Y = v => T + (1 - v / ymax) * (H - T - B);
+    let g = "";
+    for (let v = 0; v <= ymax; v += 30) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="' + css("--line") + '"/><text x="' + (L - 8) + '" y="' + (Y(v) + 4) + '" text-anchor="end" font-size="11" fill="' + css("--muted") + '" font-family="JetBrains Mono, monospace">' + v + '</text>';
+    const step = (x1 - x0) > 600 ? 120 : 60;
+    for (let m = x0; m <= x1; m += step) g += '<text x="' + X(m) + '" y="' + (H - 10) + '" text-anchor="middle" font-size="11" fill="' + css("--muted") + '" font-family="JetBrains Mono, monospace">' + clock(m).replace(":00", "") + '</text>';
+    const best = bestHour(fop.points);
+    if (best) g += '<rect x="' + X(best.start) + '" y="' + T + '" width="' + (X(best.start + 60) - X(best.start)) + '" height="' + (H - T - B) + '" fill="' + css("--glow-soft") + '"/><text x="' + (X(best.start) + 6) + '" y="' + (T + 14) + '" font-size="11" fill="' + css("--glow") + '" font-family="DM Sans, sans-serif" font-weight="700">best hour</text>';
+    for (const k of shown.slice().reverse()) {
+      const pts = s[k].points;
+      const path = pts.map((p, i) => (i ? "L" : "M") + X(toMin(p[0])).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
+      g += '<path d="' + path + '" fill="none" stroke="' + colors[k] + '" stroke-width="' + (k === FOP ? 3 : 1.6) + '" stroke-linejoin="round" opacity="' + (k === FOP ? 1 : 0.7) + '"/>';
+    }
+    const peak = fop.points.reduce((a, p) => p[1] > a[1] ? p : a, fop.points[0]);
+    g += '<circle cx="' + X(toMin(peak[0])) + '" cy="' + Y(peak[1]) + '" r="5" fill="' + css("--surface") + '" stroke="' + colors[FOP] + '" stroke-width="2.5"/><text x="' + X(toMin(peak[0])) + '" y="' + (Y(peak[1]) - 10) + '" text-anchor="middle" font-size="12" font-weight="700" fill="' + css("--ink") + '" font-family="DM Sans, sans-serif">peak ' + peak[1] + ' min</text>';
+    host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Posted waits today">' + g + "</svg>";
+    $("today-legend").innerHTML = shown.map(k => '<span><i style="background:' + colors[k] + '"></i>' + esc(s[k].ride) + "</span>").join("");
+    if (best && peak[1] > 0) {
+      const cut = Math.round(100 * (1 - best.avg / peak[1]));
+      $("today-call").innerHTML = "Best hour so far today starts at <b>" + clock(best.start) + "</b>, averaging <b>" + Math.round(best.avg) + " min</b>. The peak was " + peak[1] + " min at " + clock(toMin(peak[0])) + ". Showing up in that hour means a wait about <b>" + cut + "% shorter</b>.";
+    } else {
+      $("today-call").textContent = "Collecting today's readings. The best hour shows up once there's an hour of data.";
+    }
+  }
+
+  function renderHeat(d) {
+    const cells = d.heatmap || [];
+    const map = new Map(cells.map(c => [c.dow + "-" + c.slot, c]));
+    const slots = []; for (let s = 16; s <= 43; s++) slots.push(s); // 8:00 to 21:30
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const max = Math.max(60, ...cells.map(c => c.mean));
+    const glow = css("--glow");
+    let h = "<table><thead><tr><th></th>" + slots.map(s => "<th>" + (s % 2 === 0 ? clock(s * 30).replace(":00", "") : "") + "</th>").join("") + "</tr></thead><tbody>";
+    days.forEach((dn, i) => {
+      h += "<tr><th>" + dn + "</th>" + slots.map(s => {
+        const c = map.get(i + "-" + s);
+        if (!c) return '<td class="none" title="Not seen yet"></td>';
+        const a = 0.12 + 0.88 * (c.mean / max);
+        return '<td title="' + dn + " " + clock(s * 30) + ": " + c.mean + " min average over " + c.n + ' readings" style="background:color-mix(in srgb, ' + glow + " " + Math.round(a * 100) + '%, transparent);color:' + (a > 0.55 ? css("--bg") : css("--ink")) + '">' + Math.round(c.mean) + "</td>";
+      }).join("") + "</tr>";
+    });
+    $("heat").innerHTML = h + "</tbody></table>";
+    const seen = cells.filter(c => c.slot >= 16 && c.slot <= 43).length;
+    $("heat-count").textContent = seen + " of " + days.length * slots.length + " slots seen";
+    const rows = (d.days || []).slice().reverse();
+    $("days").innerHTML = rows.length ? rows.map(r => "<tr><td>" + new Date(r.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + '</td><td class="num">' + r.readings + '</td><td class="num">' + r.mean + ' min</td><td class="num">' + r.peak + " min at " + clock(toMin(r.peak_at)) + "</td><td>" + (r.best_start ? clock(toMin(r.best_start)) : "–") + '</td><td class="num">' + (r.best_avg != null ? r.best_avg + " min" : "–") + '</td><td class="num">' + (r.best_avg != null && r.peak ? Math.round(100 * (1 - r.best_avg / r.peak)) + "%" : "–") + "</td></tr>").join("")
+      : '<tr><td colspan="7" class="wrap">The first full park day will appear here.</td></tr>';
+  }
+
+  function renderBoard(d) {
+    const rides = (d.latest && d.latest.rides) || [];
+    const lands = {};
+    rides.forEach(r => (lands[r.land] = lands[r.land] || []).push(r));
+    const order = Object.keys(lands).sort((a, b) => (b.startsWith("Pandora") - a.startsWith("Pandora")) || a.localeCompare(b));
+    $("board").innerHTML = order.length ? order.map(l => '<div class="land"><h3>' + esc(l) + "</h3>" + lands[l].sort((a, b) => (b.wait || -1) - (a.wait || -1)).map(r => {
+      const pill = r.status === "open" ? '<span class="pill ' + (r.wait >= 60 ? "hot" : "w") + '">' + r.wait + " min</span>" : r.status === "open_no_wait" ? '<span class="pill n">No posted wait</span>' : '<span class="pill c">Closed</span>';
+      return '<div class="ride"><span>' + esc(r.ride) + "</span>" + pill + "</div>";
+    }).join("") + "</div>").join("") : '<div class="empty">The board fills in after the first run.</div>';
+  }
+
+  function renderDQ(d) {
+    const q = d.dq || { totals: {}, recent: [] }, t = q.totals || {};
+    const since = t.first_fetch ? new Date(t.first_fetch).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "–";
+    const tiles = [
+      [fmt(t.runs || 0), "runs since " + since], [fmt(t.readings_used || 0), "readings in the tables"], [fmt(t.duplicates || 0), "runs where the feed hadn't refreshed"],
+      [fmt(t.late || 0), "late runs (GitHub started over 15 min after the last)"], [fmt(t.stale || 0), "stale-feed runs held back"], [fmt((t.jumps || 0) + (t.failed || 0)), "impossible jumps or failed fetches"]
+    ];
+    $("tiles").innerHTML = tiles.map(x => '<div class="tile"><b>' + x[0] + "</b><span>" + esc(x[1]) + "</span></div>").join("");
+    const recent = (q.recent || []).slice(0, 12);
+    $("runs").innerHTML = recent.length ? recent.map(r => {
+      const issues = r.issues.length ? r.issues.map(i => '<span class="pill ' + (i.startsWith("fetch failed") || i.startsWith("schema") ? "bad" : "warn") + '">' + esc(i) + "</span>").join(" ") : '<span class="pill ok">All checks pass</span>';
+      return "<tr><td>" + esc(r.fetched_at.replace("T", " ").replace("Z", "")) + '</td><td class="num">' + (r.gap_min != null ? r.gap_min + " min" : "first") + '</td><td class="num">' + r.rows_new + '</td><td class="wrap">' + issues + "</td></tr>";
+    }).join("") : '<tr><td colspan="4" class="wrap">No runs yet.</td></tr>';
+  }
+
+  // Bioluminescent drift
+  const cv = $("glow"), ctx = cv.getContext("2d");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let seeds = [], W = 0, H = 0;
+  let sr = 11; const srand = () => (sr = (sr * 16807) % 2147483647) / 2147483647;
+  function size() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    seeds = []; const n = Math.round(W * H / 9000);
+    for (let i = 0; i < n; i++) seeds.push({ x: srand() * W, y: srand() * H, r: 0.6 + srand() * 2.2, p: srand() * 6.28, v: 0.08 + srand() * 0.25, violet: srand() < 0.25 });
+  }
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+    for (const s of seeds) {
+      const a = reduce ? 0.55 : 0.3 + 0.6 * Math.abs(Math.sin(t / 1800 + s.p));
+      const y = reduce ? s.y : (s.y - (t / 1000) * s.v * 6) % H;
+      const yy = y < 0 ? y + H : y;
+      const x = reduce ? s.x : s.x + Math.sin(t / 2400 + s.p) * 6;
+      const g = ctx.createRadialGradient(x, yy, 0, x, yy, s.r * 4);
+      const c = s.violet ? "179,148,255" : "69,240,220";
+      g.addColorStop(0, "rgba(" + c + "," + a + ")"); g.addColorStop(1, "rgba(" + c + ",0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, yy, s.r * 4, 0, 6.28); ctx.fill();
+    }
+    if (!reduce) requestAnimationFrame(draw);
+  }
+  size(); draw(0);
+  window.addEventListener("resize", () => { size(); if (reduce) draw(0); });
+
+  load().then(d => {
+    if (!d) return;
+    renderHero(d); renderToday(d); renderHeat(d); renderBoard(d); renderDQ(d);
+  });
+})();
+</script>
+</body>
+</html>
