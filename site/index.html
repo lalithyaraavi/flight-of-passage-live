@@ -126,6 +126,10 @@ table.t td.wrap { white-space: normal; min-width: 220px; }
 .step b { font-size: 0.95rem; }
 .step p { font-size: 0.84rem; color: var(--muted); }
 .step code { font-size: 0.74rem; overflow-wrap: anywhere; }
+.sql { margin: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-family: var(--f-mono); font-size: 0.78rem; line-height: 1.55; overflow-x: auto; white-space: pre; color: var(--ink); }
+.sql .c { color: var(--muted); }
+.sql .k { color: var(--violet); }
+.ports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .asks { display: flex; flex-direction: column; gap: 12px; }
 .asks p { max-width: 66ch; }
 footer { border-top: 1px solid var(--line); }
@@ -137,6 +141,7 @@ footer { border-top: 1px solid var(--line); }
   .flow { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 420px) { .flow { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .ports { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -231,12 +236,32 @@ footer { border-top: 1px solid var(--line); }
 
   <section aria-labelledby="s6">
     <div class="station">Station 6 · how it's built</div>
-    <h2 id="s6">Four steps, every 10 minutes</h2>
+    <h2 id="s6">Python, SQL, PySpark and Airflow</h2>
     <div class="flow">
       <div class="step"><span class="tier">Schedule</span><b>GitHub Actions</b><p>Cron every 10 minutes. Runs are numbered and timed, so a late start shows up in station 4.</p><code>.github/workflows/collect.yml</code></div>
       <div class="step"><span class="tier">Bronze</span><b>Raw snapshot</b><p>The feed's JSON exactly as received, plus fetch time and HTTP status. Never edited, so any fix can be replayed.</p><code>data/bronze/date/time.json</code></div>
       <div class="step"><span class="tier">Silver</span><b>One row per reading</b><p>Deduplicated on ride and feed timestamp, typed, converted to park time, stale and jump flags added. One file per park day.</p><code>data/silver/waits/date.csv</code></div>
-      <div class="step"><span class="tier">Gold</span><b>What the page reads</b><p>Today's curves, the weekday heatmap, daily best hours, the live board and the run log, as small JSON tables.</p><code>data/gold/*.json</code></div>
+      <div class="step"><span class="tier">Gold · SQL</span><b>What the page reads</b><p>Today's curves, the weekday heatmap and each day's best hour are SQL queries run in DuckDB over the silver files, written out as small JSON tables.</p><code>pipeline/sql/*.sql</code></div>
+    </div>
+    <div class="prose"><p>The "best hour to ride" is one window query. For every reading, average the next 60 minutes of readings, then keep the window with the lowest average.</p></div>
+<pre class="sql" aria-label="SQL for the best hour to ride"><span class="k">WITH</span> windows <span class="k">AS</span> (
+  <span class="k">SELECT</span> park_date, local_time,
+         avg(wait_min)   <span class="k">OVER</span> w <span class="k">AS</span> win_avg,
+         count(wait_min) <span class="k">OVER</span> w <span class="k">AS</span> win_n
+  <span class="k">FROM</span> fop
+  <span class="k">WINDOW</span> w <span class="k">AS</span> (<span class="k">PARTITION BY</span> park_date <span class="k">ORDER BY</span> m
+               <span class="k">RANGE BETWEEN CURRENT ROW AND</span> 60 <span class="k">FOLLOWING</span>)
+)
+<span class="k">SELECT</span> park_date,
+       arg_min(local_time, (win_avg, m)) <span class="k">AS</span> best_start,  <span class="c">-- earliest of any ties</span>
+       round(min(win_avg), 1)            <span class="k">AS</span> best_avg
+<span class="k">FROM</span> windows
+<span class="k">WHERE</span> win_n &gt;= 3                     <span class="c">-- one lucky reading isn't an hour</span>
+<span class="k">GROUP BY</span> park_date;</pre>
+    <div class="ports">
+      <div class="step"><span class="tier">PySpark</span><b>The silver step on Spark</b><p>The same cleaning written as a Spark job: parse, explode, dedupe with a window, flag, write Parquet by day. Checked against the Python output and it matches row for row.</p><code>spark/silver_spark.py</code></div>
+      <div class="step"><span class="tier">Airflow</span><b>The DAG version</b><p>fetch → build → quality gate and publish, on the same 10-minute schedule, with retries, no backfill and one run at a time.</p><code>dags/fop_dag.py</code></div>
+      <div class="step"><span class="tier">Quality gate</span><b>Fails loudly</b><p>Exits non-zero when the latest run failed or the feed's schema changed, so the scheduler can alert. The raw snapshot is kept either way.</p><code>pipeline/check.py</code></div>
     </div>
     <p class="caption" id="src-line">Code and every snapshot: <a id="repo-link" href="https://github.com/lalithyaraavi/flight-of-passage-live" target="_blank" rel="noopener">github.com/lalithyaraavi/flight-of-passage-live</a></p>
   </section>
@@ -245,8 +270,8 @@ footer { border-top: 1px solid var(--line); }
     <div class="station">Station 7 · at Disney scale</div>
     <h2 id="s7">What I'd change for hundreds of millions of plays</h2>
     <div class="asks">
-      <p><b>Spark and Delta instead of Python and CSV.</b> The silver step becomes a Delta <code>MERGE</code> on the event key, so reruns never double-count, partitioned by date.</p>
-      <p><b>Airflow instead of cron.</b> Sensors wait for late data instead of guessing, and the quality checks become a gate that stops a bad hour from publishing.</p>
+      <p><b>Spark and Delta instead of Python and CSV.</b> The PySpark silver job is already in the repo. At scale its output becomes a Delta <code>MERGE</code> on the event key, so reruns never double-count, partitioned by date.</p>
+      <p><b>Airflow instead of cron.</b> The DAG is in the repo too. On a real cluster, sensors would wait for late data instead of guessing, and the gate would hold a bad hour back from the dashboards.</p>
       <p><b>The checks as a shared library.</b> Freshness, duplicates, schema drift and impossible jumps written once, so every pipeline in the Data organization checks itself the same way.</p>
     </div>
   </section>

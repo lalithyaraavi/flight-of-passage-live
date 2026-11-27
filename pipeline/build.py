@@ -1,13 +1,17 @@
 """Silver + gold: clean every bronze snapshot, run quality checks, publish small JSON tables for the page.
+The analytical gold tables are SQL (DuckDB, pipeline/sql/); latest.json and dq.json are written here.
 
 bronze/YYYY-MM-DD/HHMMSS.json   raw snapshots, never edited
 silver/waits/YYYY-MM-DD.csv     one row per ride reading, deduplicated, typed, flagged
 gold/*.json                     what the page reads
 """
-import csv, json, os, pathlib, statistics
+import csv, json, os, pathlib, sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import gold  # noqa: E402
 
 ROOT = pathlib.Path(os.environ.get("FOP_DATA") or pathlib.Path(__file__).resolve().parents[1] / "data")
 BRONZE, SILVER, GOLD = ROOT / "bronze", ROOT / "silver" / "waits", ROOT / "gold"
@@ -132,42 +136,7 @@ def build():
     write("latest.json", {"fetched_at": last_ok["fetched_at"] if last_ok else None, "rides": latest_rows})
 
     days = sorted(by_day)
-    today = days[-1] if days else None
-    series = {}
-    for rid in KEY_RIDES:
-        pts = [(r["local_time"], r["wait_min"]) for r in good if r["park_date"] == today and r["ride_id"] == rid and r["status"] == "open"]
-        name = next((r["ride"] for r in rows if r["ride_id"] == rid), str(rid))
-        series[str(rid)] = {"ride": name, "points": pts}
-    write("today.json", {"park_date": today, "series": series})
-
-    def minutes(hhmm):
-        h, m = map(int, hhmm.split(":"))
-        return h * 60 + m
-
-    day_stats = []
-    for d in days:
-        pts = sorted((minutes(r["local_time"]), r["wait_min"], r["local_time"]) for r in good
-                     if r["park_date"] == d and r["ride_id"] == FOP and r["status"] == "open")
-        if len(pts) < 3:
-            continue
-        peak = max(pts, key=lambda p: p[1])
-        best, best_avg = None, None
-        for i, p in enumerate(pts):  # lowest average wait across any 60-minute window
-            win = [q[1] for q in pts[i:] if q[0] - p[0] <= 60]
-            if len(win) >= 3 and (best_avg is None or statistics.mean(win) < best_avg):
-                best, best_avg = p, statistics.mean(win)
-        day_stats.append({"date": d, "readings": len(pts), "mean": round(statistics.mean(q[1] for q in pts), 1),
-                          "peak": peak[1], "peak_at": peak[2], "best_start": best[2] if best else None,
-                          "best_avg": round(best_avg, 1) if best_avg is not None else None})
-    write("days.json", day_stats)
-
-    cells = defaultdict(list)
-    for r in good:
-        if r["ride_id"] == FOP and r["status"] == "open":
-            dt = datetime.fromisoformat(r["park_date"])
-            slot = minutes(r["local_time"]) // 30
-            cells[(dt.weekday(), slot)].append(r["wait_min"])
-    write("heatmap.json", [{"dow": k[0], "slot": k[1], "mean": round(statistics.mean(v), 1), "n": len(v)} for k, v in sorted(cells.items())])
+    gold.run(SILVER, GOLD, KEY_RIDES)  # today / days / heatmap are SQL: see pipeline/sql/
 
     totals = {"runs": len(runs), "failed": sum(not r["ok"] for r in runs),
               "late": sum(any(i.startswith("late") for i in r["issues"]) for r in runs),
