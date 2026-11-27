@@ -20,7 +20,7 @@ jobs:
       - name: Bronze (fetch one snapshot)
         run: python pipeline/collect.py
       - name: Silver and gold (clean, check, publish)
-        run: python pipeline/build.py
+        run: pip install -q -r requirements.txt && python pipeline/build.py
       - name: Commit data
         run: |
           git config user.name "fop-pipeline"
