@@ -1,7 +1,7 @@
 name: collect
 on:
   schedule:
-    - cron: "3,13,23,33,43,53 * * * *"   # GitHub may start scheduled runs late; the pipeline measures that gap
+    - cron: "5,15,25,35,45,55 * * * *"   # every 10 minutes; GitHub may start runs late and the pipeline measures that gap
   workflow_dispatch:
 permissions:
   contents: write
