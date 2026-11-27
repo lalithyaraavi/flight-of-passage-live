@@ -1,18 +1,21 @@
 name: collect
 on:
   schedule:
-    - cron: "4,14,24,34,44,54 * * * *"   # every 10 minutes; GitHub may start runs late and the pipeline measures that gap
+    - cron: "4,14,24,34,44,54 * * * *"   # backup start; GitHub runs schedules rarely, so each run also queues the next one
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: collect
   cancel-in-progress: false
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
+      - name: Note start time
+        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -29,3 +32,11 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "data: snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
           for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
+      - name: Queue the next run 10 minutes after this one started
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          wait=$(( STARTED + 600 - $(date +%s) ))
+          if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
+          gh workflow run collect.yml --ref main -R "$GITHUB_REPOSITORY"
