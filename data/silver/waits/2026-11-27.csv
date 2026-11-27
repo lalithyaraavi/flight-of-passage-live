@@ -1,0 +1,22 @@
+reading_id,fetched_at,source_updated_at,park_date,local_time,land,ride_id,ride,status,wait_min,is_stale,is_jump
+657-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Africa,657,Festival of the Lion King,open_no_wait,0,0,0
+651-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Africa,651,Gorilla Falls Exploration Trail,closed,,0,0
+113-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Africa,113,Kilimanjaro Safaris,closed,,0,0
+655-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Africa,655,Wildlife Express Train,closed,,0,0
+110-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Asia,110,Expedition Everest - Legend of the Forbidden Mountain,open,5,0,0
+14533-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Asia,14533,Expedition Everest - Legend of the Forbidden Mountain Single Rider,open_no_wait,0,0,0
+10921-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Asia,10921,Feathered Friends in Flight!,open_no_wait,0,0,0
+112-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Asia,112,Kali River Rapids,closed,,0,0
+13806-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Conservation Station,13806,Animal Care at Conservation Station,closed,,0,0
+17661-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Conservation Station,17661,Bluey's Wild World at Conservation Station,closed,,0,0
+17808-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Conservation Station,17808,Jumping Junction,closed,,0,0
+10920-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Dinoland U.S.A,10920,Finding Nemo: The Big Blue... and Beyond!,open_no_wait,0,0,0
+13811-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Discovery Island,13811,Discovery Island Trails,closed,,0,0
+116-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Discovery Island,116,Meet Favorite Disney Pals at Adventurers Outpost,closed,,0,0
+12451-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Discovery Island,12451,Meet Moana at Character Landing,closed,,0,0
+13751-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Discovery Island,13751,Tree of Life,closed,,0,0
+14943-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Discovery Island,14943,Zootopia: Better Zoogether!,open,10,0,0
+4439-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Pandora - The World of Avatar,4439,Avatar Flight of Passage,open,30,0,0
+4438-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,Pandora - The World of Avatar,4438,Na'vi River Journey,open,10,0,0
+13812-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,The Oasis,13812,The Oasis Exhibits,closed,,0,0
+13808-1795784130,2026-11-27T13:00:39Z,2026-11-27T12:55:30Z,2026-11-27,07:55,The Oasis,13808,Wilderness Explorers,closed,,0,0
