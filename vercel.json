@@ -1,4 +1,1 @@
-{
-  "outputDirectory": "site",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- site vercel.json"
-}
+{"outputDirectory": "site", "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)data'"}
